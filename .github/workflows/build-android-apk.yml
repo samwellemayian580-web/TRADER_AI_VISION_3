@@ -22,7 +22,22 @@ jobs:
           fi
           PROJECT_ROOT=$(dirname "$ANDROID_DIR")
           cp -a "$PROJECT_ROOT"/. .
-
+      - name: Fix Kotlin chart stroke widths
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/java/com/traderai/app/MainActivity.kt")
+          s = p.read_text()
+          s = s.replace(
+              "strokeWidth = dp(1.3f).toFloat()",
+              "strokeWidth = 1.3f * resources.displayMetrics.density"
+          )
+          s = s.replace(
+              "strokeWidth = dp(1.5f).toFloat()",
+              "strokeWidth = 1.5f * resources.displayMetrics.density"
+          )
+          p.write_text(s)
+          PY
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
