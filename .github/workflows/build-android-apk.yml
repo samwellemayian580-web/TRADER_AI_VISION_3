@@ -14,6 +14,7 @@ jobs:
       - name: Extract project ZIP
         run: |
           unzip -q VISION_3_SOURCE_FILES.zip -d extracted
+          chmod -R u+rwX extracted
           ANDROID_DIR=$(find extracted -type f -name settings.gradle.kts -printf '%h\n' | head -n 1)
           if [ -z "$ANDROID_DIR" ]; then
             echo "Android project not found in ZIP"
