@@ -158,7 +158,6 @@ class MainActivity : Activity() {
         marketCard.addView(uiText("GOLDEN LIVE MARKET", 22f, Color.rgb(255, 224, 139), true))
         chartStatus = uiText("Waiting for live candle feed…", 11f, muted)
         marketCard.addView(chartStatus)
-        val tfRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         val tfScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val tfRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         listOf("1m" to "M1", "5m" to "M5", "15m" to "M15", "30m" to "M30", "1H" to "H1", "4H" to "H4", "1D" to "D1", "1W" to "W1", "1M" to "MN1").forEach { (tf, backendTf) ->
@@ -288,7 +287,7 @@ class MainActivity : Activity() {
     private fun rounded(fill: Int, stroke: Int, radius: Int): GradientDrawable = GradientDrawable().apply {
         setColor(fill); setCornerRadius(dp(radius).toFloat()); setStroke(dp(1), stroke)
     }
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+    private fun dp(v: Number) = (v.toFloat() * resources.displayMetrics.density).toInt()
 
     private fun request(path: String, method: String = "GET", payload: JSONObject? = null): JSONObject {
         val connection = URL(baseUrl + path).openConnection() as HttpURLConnection
