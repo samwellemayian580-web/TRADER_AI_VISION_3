@@ -3,66 +3,39 @@ name: Build TRADER AI VISION 3.0 APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: ["main"]
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout project
+        uses: actions/checkout@v4
 
-      - name: Extract project ZIP
-        run: |
-          unzip -q VISION_3_SOURCE_FILES.zip -d extracted
-          chmod -R u+rwX extracted
-          ANDROID_DIR=$(find extracted -type f -name settings.gradle.kts -printf '%h\n' | head -n 1)
-          if [ -z "$ANDROID_DIR" ]; then
-            echo "Android project not found in ZIP"
-            exit 1
-          fi
-          PROJECT_ROOT=$(dirname "$ANDROID_DIR")
-          cp -a "$PROJECT_ROOT"/. .
-      - name: Fix Kotlin chart stroke widths
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("android/app/src/main/java/com/traderai/app/MainActivity.kt")
-          s = p.read_text()
-          s = s.replace(
-              "strokeWidth = dp(1.3f).toFloat()",
-              "strokeWidth = 1.3f * resources.displayMetrics.density"
-          )
-          s = s.replace(
-              "strokeWidth = dp(1.5f).toFloat()",
-              "strokeWidth = 1.5f * resources.displayMetrics.density"
-          )
-          p.write_text(s)
-          PY
-      - name: Set up Java 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-      - name: Set up Gradle
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Build APK
-        working-directory: android
-        run: |
-          chmod +x gradlew || true
-          if [ -f gradlew ]; then
-            ./gradlew assembleDebug
-          else
-            gradle assembleDebug
-          fi
+
+      - name: Build existing Android app
+        working-directory: TRADER_AI_3.0_PROJECT/android
+        run: gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: TRADER-AI-VISION-3.0-APK
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: TRADER_AI_3.0_PROJECT/android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
