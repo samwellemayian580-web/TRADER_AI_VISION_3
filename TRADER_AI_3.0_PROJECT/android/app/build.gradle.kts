@@ -30,18 +30,20 @@ android {
     }
 }
 
-python {
-    version = "3.11"
+chaquopy {
+    defaultConfig {
+        version = "3.11"
+
+        pip {
+            install("flask==3.0.3")
+            install("numpy==1.26.2")
+            install("pandas==2.1.3")
+        }
+    }
 
     sourceSets {
         getByName("main") {
             srcDir("../../")
         }
-    }
-
-    pip {
-        install("flask==3.0.3")
-        install("numpy==1.26.2")
-        install("pandas==2.1.3")
     }
 }
