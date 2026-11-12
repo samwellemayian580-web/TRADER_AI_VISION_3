@@ -1,3 +1,4 @@
+
 name: Build TRADER AI VISION 3.0 APK
 
 on:
@@ -21,6 +22,11 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -31,9 +37,24 @@ jobs:
         run: yes | sdkmanager --licenses
 
       - name: Install Android SDK packages
-        run: sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" 
+        run: sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build Android APK
+        working-directory: TRADER_AI_3.0_PROJECT/android
+        run: gradle assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TRADER-AI-VISION-3.0-APK
+          path: TRADER_AI_3.0_PROJECT/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
