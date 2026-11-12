@@ -1,4 +1,4 @@
-package com.traderai.app
+import com.chaquo.python.Pythonpackage com.traderai.app
 
 import android.app.Activity
 import android.os.Bundle
@@ -55,9 +55,25 @@ class MainActivity : Activity() {
     private val cardColor = Color.rgb(20, 22, 43)
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        buildShell("HOME")
-        refreshStatus()
+    super.onCreate(savedInstanceState)
+    buildShell("HOME")
+
+    executor.execute {
+        try {
+            Python.getInstance()
+                .getModule("android_server")
+                .callAttr("start_server")
+
+            runOnUiThread {
+                refreshStatus()
+            }
+        } catch (e: Exception) {
+            runOnUiThread {
+                statusView.text = "PYTHON ENGINE ERROR: ${e.message}"
+            }
+        }
+    }
+}
     }
 
     private fun buildShell(pageName: String) {
