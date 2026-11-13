@@ -12,6 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout project
         uses: actions/checkout@v4
@@ -30,7 +31,6 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          accept-android-sdk-licenses: false
           packages: platform-tools
 
       - name: Accept Android SDK licenses
@@ -40,21 +40,6 @@ jobs:
         run: sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
-
-      - name: Build Android APK
-        working-directory: TRADER_AI_3.0_PROJECT/android
-        run: gradle assembleDebug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: TRADER-AI-VISION-3.0-APK
-          path: TRADER_AI_3.0_PROJECT/android/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
