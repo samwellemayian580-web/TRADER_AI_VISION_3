@@ -11,7 +11,11 @@ import os
 import threading
 
 from flask import Flask, jsonify, request
-
+from broker_reconciliation import (
+    ReconciliationError,
+    get_symbol_specifications,
+    reconcile_positions,
+)
 try:
     import MetaTrader5 as mt5
 except ImportError:
@@ -170,7 +174,48 @@ def quote():
         if mt5 is not None:
             mt5.shutdown()
 
+@app.post("/v1/reconciliation")
+def reconciliation():
+    data = request.get_json(silent=True) or {}
 
+    try:
+        with LOCK:
+            mode, config, account = connect_account(
+                data.get("mode", "DEMO")
+            )
+
+            specs = get_symbol_specifications(
+                mt5, config["symbol"]
+            )
+
+            snapshot = reconcile_positions(
+                mt5, config["symbol"]
+            )
+
+            return jsonify({
+                "connected": True,
+                "mode": mode,
+                "server": account.server,
+                "account_trade_allowed": account.trade_allowed,
+                "symbol_specifications": specs,
+                "reconciliation": snapshot,
+            })
+
+    except (
+        BridgeError,
+        ReconciliationError,
+        ValueError,
+        TypeError,
+    ) as exc:
+        return jsonify({
+            "connected": False,
+            "error": str(exc),
+            "new_execution_allowed": False,
+        }), 503
+
+    finally:
+        if mt5 is not None:
+            mt5.shutdown()
 @app.route("/v1/orders", methods=["POST"])
 def orders_not_enabled():
     return jsonify({
