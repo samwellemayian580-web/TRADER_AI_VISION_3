@@ -83,8 +83,8 @@ class TradeSignalGenerator:
                 timeframe_results=analysis.get("timeframe_results", {}),
             )
 
-        entry_tf = "M5"
-        structure_tf = "M5" if strategy == "SCALPING" else "H1"
+        entry_tf = "M1" if strategy == "SCALPING" else "M15"
+        structure_tf = "M5" if strategy == "SCALPING" else "H4"
         entry_candles = market_data[entry_tf].get("candles", [])
         structure_candles = market_data[structure_tf].get("candles", [])
         if len(entry_candles) < 2 or len(structure_candles) < self.structure_lookback:
@@ -139,7 +139,7 @@ class TradeSignalGenerator:
                 "low": round(float(entry - zone_half_width), 3),
                 "high": round(float(entry + zone_half_width), 3),
             },
-            "entry_reference": "Last completed M5 candle close; verify against current broker quote before entry",
+            "entry_reference": f"Last completed {entry_tf} candle close; verify against current broker quote before entry",
             "stop_loss": round(float(stop), 3),
             "take_profit_1": round(float(tp1), 3),
             "take_profit_2": round(float(tp2), 3),

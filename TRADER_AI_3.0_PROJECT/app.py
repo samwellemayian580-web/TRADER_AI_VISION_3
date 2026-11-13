@@ -5,11 +5,15 @@ import math
 from analysis.market_analyzer import MarketAnalyzer
 from analysis.signal_generator import TradeSignalGenerator
 from data.market_data import MarketDataClient
+from broker.paper_broker import PaperBroker
+from broker.mt5_bridge_client import MT5BridgeClient, BridgeError
 
 app = Flask(__name__)
 ANALYZER = MarketAnalyzer()
 SIGNAL_GENERATOR = TradeSignalGenerator()
 MARKET_DATA = MarketDataClient()
+PAPER_BROKER = PaperBroker(starting_equity=1000.0)
+MT5_BRIDGE = MT5BridgeClient()
 
 BOT = {
     "name": "TRADER AI 3.0",
@@ -177,7 +181,7 @@ async function generateSignal() {
     button.disabled = true;
     button.innerText = 'ANALYSING MARKET...';
     document.getElementById('decision').innerText = 'ANALYSING';
-    document.getElementById('message').innerText = 'Requesting M5, M15, H1 and H4 market data. This may take a moment.';
+    document.getElementById('message').innerText = 'Requesting all nine market timeframes. This may take a moment.';
     try {
         const response = await fetch('/signal', {
             method:'POST',
@@ -310,7 +314,7 @@ def generate_signal():
 
     market_data = {}
     timeframe_status = {}
-    for timeframe in ("M5", "M15", "H1", "H4"):
+    for timeframe in MARKET_DATA.TIMEFRAMES:
         result = MARKET_DATA.fetch(timeframe, 100)
         market_data[timeframe] = result
         timeframe_status[timeframe] = result.get("status", "DATA_ERROR")
@@ -337,39 +341,278 @@ def generate_signal():
 
 @app.route("/analyze-live", methods=["GET"])
 def analyze_live():
-    timeframe = request.args.get("timeframe", "M5").upper()
+    strategy = request.args.get(
+        "strategy", BOT.get("strategy", "SCALPING")
+    ).upper()
 
-    if timeframe not in ["M5", "M15", "H1", "H4"]:
+    if strategy not in ("SCALPING", "SWING"):
         return jsonify({
             "decision": "WAIT",
-            "reason": "Invalid timeframe. Use M1, M5, M15, M30, H1, H4, D1, W1 or MN1",
-            "execution_authorized": False
+            "status": "INVALID_STRATEGY",
+            "reason": "Strategy must be SCALPING or SWING",
+            "execution_authorized": False,
         }), 400
 
-    market = MARKET_DATA.fetch(timeframe, 100)
+    market_data = {}
+    timeframe_status = {}
 
-    if not market.get("success") or not market.get("signal_allowed"):
-        BOT["decision"] = "WAIT"
+    for timeframe in MARKET_DATA.TIMEFRAMES:
+        market = MARKET_DATA.fetch(timeframe, 100)
+        market_data[timeframe] = market
+        timeframe_status[timeframe] = market.get(
+            "status", "DATA_ERROR"
+        )
 
-        return jsonify({
-            "decision": "WAIT",
-            "reason": market.get("status", "Market data unavailable"),
-            "market_status": market.get("status"),
-            "timeframe": timeframe,
-            "candles_received": market.get("candles_received", 0),
-            "execution_authorized": False
-        })
-
-    result = ANALYZER.analyze(market.get("candles", []))
+    result = SIGNAL_GENERATOR.analyzer.analyze(
+        market_data, strategy=strategy
+    )
 
     BOT["decision"] = result.get("decision", "WAIT")
 
     result["symbol"] = "XAUUSD"
-    result["timeframe"] = timeframe
-    result["market_status"] = market.get("status")
+    result["strategy"] = strategy
+    result["timeframe_status"] = timeframe_status
+    result["analysis_source"] = (
+        "Twelve Data REST candles; not verified HFM broker quotes"
+    )
     result["execution_authorized"] = False
+    result["status"] = (
+        "NO_TRADE"
+        if result.get("decision") == "WAIT"
+        else "ANALYSIS_READY"
+    )
 
     return jsonify(result)
+
+
+# PAPER BROKER API
+# Simulation only. These endpoints never contact HFM or MT5.
+
+def paper_local_only():
+    return request.remote_addr in ("127.0.0.1", "::1")
+
+
+@app.route("/paper/status", methods=["GET"])
+def paper_status():
+    if not paper_local_only():
+        return jsonify({"success": False, "reason": "Local access only"}), 403
+
+    return jsonify({
+        "success": True,
+        "account": PAPER_BROKER.get_account()
+    })
+
+
+@app.route("/paper/positions", methods=["GET"])
+def paper_positions():
+    if not paper_local_only():
+        return jsonify({"success": False, "reason": "Local access only"}), 403
+
+    return jsonify({
+        "success": True,
+        "mode": "PAPER",
+        "live_trading": False,
+        "positions": PAPER_BROKER.get_positions()
+    })
+
+
+@app.route("/paper/order", methods=["POST"])
+def paper_order():
+    if not paper_local_only():
+        return jsonify({"success": False, "reason": "Local access only"}), 403
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"success": False, "reason": "Send a JSON object"}), 400
+
+    required = (
+        "symbol", "side", "volume",
+        "entry_price", "stop_loss", "take_profit"
+    )
+    missing = [key for key in required if key not in data]
+
+    if missing:
+        return jsonify({
+            "success": False,
+            "reason": "Missing required fields",
+            "missing": missing
+        }), 400
+
+    try:
+        result = PAPER_BROKER.place_order(
+            symbol=data["symbol"],
+            side=data["side"],
+            volume=data["volume"],
+            entry_price=data["entry_price"],
+            stop_loss=data["stop_loss"],
+            take_profit=data["take_profit"],
+        )
+        return jsonify(result), 201
+
+    except (ValueError, TypeError) as exc:
+        return jsonify({
+            "success": False,
+            "mode": "PAPER",
+            "live_trading": False,
+            "reason": str(exc)
+        }), 400
+
+
+@app.route("/paper/close", methods=["POST"])
+def paper_close():
+    if not paper_local_only():
+        return jsonify({"success": False, "reason": "Local access only"}), 403
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"success": False, "reason": "Send a JSON object"}), 400
+
+    if "ticket" not in data or "exit_price" not in data:
+        return jsonify({
+            "success": False,
+            "reason": "ticket and exit_price are required"
+        }), 400
+
+    try:
+        result = PAPER_BROKER.close_position(
+            ticket=data["ticket"],
+            exit_price=data["exit_price"]
+        )
+        return jsonify(result)
+
+    except (ValueError, TypeError) as exc:
+        return jsonify({
+            "success": False,
+            "mode": "PAPER",
+            "live_trading": False,
+            "reason": str(exc)
+        }), 400
+
+
+
+
+def vps_local_only():
+    return request.remote_addr in ("127.0.0.1", "::1")
+
+
+@app.route("/vps/status", methods=["GET"])
+def vps_status():
+    if not vps_local_only():
+        return jsonify({"success": False, "error": "Local access only."}), 403
+
+    result = MT5_BRIDGE.check_connection()
+    return jsonify(result), (200 if result["connected"] else 503)
+
+
+@app.route("/vps/account", methods=["GET"])
+def vps_account():
+    if not vps_local_only():
+        return jsonify({"success": False, "error": "Local access only."}), 403
+
+    try:
+        return jsonify({
+            "success": True,
+            "data": MT5_BRIDGE.get_account()
+        })
+    except BridgeError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 503
+
+
+
+@app.route("/vps/order", methods=["POST"])
+def vps_order():
+    if not vps_local_only():
+        return jsonify({"success": False, "error": "Local access only."}), 403
+
+    body = request.get_json(silent=True)
+    required = {
+        "request_id", "symbol", "side",
+        "volume", "stop_loss", "take_profit"
+    }
+    if not isinstance(body, dict) or set(body) != required:
+        return jsonify({
+            "success": False,
+            "error": "Invalid order request fields."
+        }), 400
+
+    try:
+        result = MT5_BRIDGE.place_order(body)
+        return jsonify(result)
+    except BridgeError as exc:
+        return jsonify({
+            "success": False,
+            "error": str(exc)
+        }), 503
+
+
+@app.route("/vps/batch", methods=["POST"])
+def vps_batch():
+    if not vps_local_only():
+        return jsonify({"success": False, "error": "Local access only."}), 403
+
+    body = request.get_json(silent=True)
+    required = {"setup_id", "batch", "take_profit"}
+    if not isinstance(body, dict) or set(body) != required:
+        return jsonify({
+            "success": False,
+            "error": "Invalid batch request fields."
+        }), 400
+
+    setup_id = body.get("setup_id")
+    batch = body.get("batch")
+    take_profit = body.get("take_profit")
+
+    if not isinstance(setup_id, str) or not setup_id.strip():
+        return jsonify({"success": False, "error": "A valid setup_id is required."}), 400
+    if not isinstance(batch, dict) or batch.get("approved") is not True:
+        return jsonify({"success": False, "error": "Only an approved batch can be submitted."}), 400
+    if batch.get("side") not in ("BUY", "SELL"):
+        return jsonify({"success": False, "error": "Invalid batch side."}), 400
+    if not isinstance(batch.get("orders"), list) or not batch["orders"]:
+        return jsonify({"success": False, "error": "Batch must contain child orders."}), 400
+
+    try:
+        result = MT5_BRIDGE.place_batch(setup_id, batch, take_profit)
+        return jsonify(result)
+    except BridgeError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 503
+
+
+@app.route("/vps/positions", methods=["GET"])
+def vps_positions():
+    if not vps_local_only():
+        return jsonify({"success": False, "error": "Local access only."}), 403
+
+    try:
+        return jsonify({
+            "success": True,
+            "data": MT5_BRIDGE.get_positions("XAUUSD")
+        })
+    except BridgeError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 503
+
+
+@app.route("/vps/quote", methods=["GET"])
+def vps_quote():
+    if not vps_local_only():
+        return jsonify({"success": False, "error": "Local access only."}), 403
+
+    symbol = request.args.get("symbol", "XAUUSD")
+
+    if symbol != "XAUUSD":
+        return jsonify({
+            "success": False,
+            "error": "Only XAUUSD is enabled."
+        }), 400
+
+    try:
+        return jsonify({
+            "success": True,
+            "data": MT5_BRIDGE.get_quote(symbol)
+        })
+    except BridgeError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)

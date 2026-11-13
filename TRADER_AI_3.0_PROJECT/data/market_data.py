@@ -26,6 +26,24 @@ TIMEFRAMES = {
     "MN1": ("1month", 2592000),
 }
 
+# Maximum permitted age of the latest candle's OPEN timestamp.
+# These are conservative feed-quality limits, not broker trading hours.
+FRESHNESS_LIMIT_SECONDS = {
+    "M1": 180,
+    "M5": 600,
+    "M15": 1800,
+    "M30": 3600,
+    "H1": 7200,
+    "H4": 28800,
+    "D1": 172800,
+    "W1": 1209600,
+    "MN1": 5356800,
+}
+
+
+def _is_stale(timeframe, age_seconds):
+    return age_seconds > FRESHNESS_LIMIT_SECONDS[timeframe]
+
 
 def _load_api_key():
     # Environment variable is preferred for deployment. For local Termux use,
@@ -127,10 +145,10 @@ class MarketDataClient:
 
             latest_dt = datetime.fromisoformat(candles[-1]["openTime"])
             age = max(0.0, (datetime.now(timezone.utc) - latest_dt).total_seconds())
-            # This REST feed may update on a minute schedule. Flag data that is
-            # much older than a normal candle, and never pretend it is live.
-            stale_after = max(seconds * 2, 15 * 60)
-            stale = age > stale_after
+            # Age is measured from candle OPEN time, not from a broker tick.
+            # Closed sessions may produce stale data; stale data cannot signal.
+            stale_after = FRESHNESS_LIMIT_SECONDS[timeframe]
+            stale = _is_stale(timeframe, age)
             status = "STALE_DATA" if stale else "LIVE_DATA_READY"
             return {
                 "success": True,
@@ -140,8 +158,9 @@ class MarketDataClient:
                 "feed_type": "REST candles (not HFM broker quotes)",
                 "status": status,
                 "signal_allowed": not stale,
-                "quote_age_seconds": round(age, 1),
+                "latest_candle_open_age_seconds": round(age, 1),
                 "latest_candle_age_seconds": round(age, 1),
+                "freshness_limit_seconds": stale_after,
                 "candles_received": len(candles),
                 "latest_price": candles[-1]["close"],
                 "candles": candles,

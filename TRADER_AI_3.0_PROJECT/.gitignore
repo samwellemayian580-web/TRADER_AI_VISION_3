@@ -3,3 +3,15 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# Local backups and generated files
+*.bak
+*.bak.*
+*.backup
+*.backup.*
+*.pre_batch
+*_backup.py
+*_before_*.py
+__pycache__/
+*.py[cod]
+backups/

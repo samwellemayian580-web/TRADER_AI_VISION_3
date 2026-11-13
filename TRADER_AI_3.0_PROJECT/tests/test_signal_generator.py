@@ -15,10 +15,12 @@ class FakeAnalyzer:
         return {
             "decision": self.decision,
             "reason": "All required timeframe conditions agree",
-            "timeframe_trends": {"M5": trend, "M15": trend, "H1": trend, "H4": trend},
+            "timeframe_trends": {tf: trend for tf in ("M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN1")},
             "timeframe_results": {
-                "M5": {"atr14": 2.0, "patterns": ["BULLISH_ENGULFING"]},
-                "H1": {"atr14": 5.0, "patterns": []},
+                "M1": {"atr14": 1.0, "patterns": ["BULLISH_ENGULFING"]},
+                "M5": {"atr14": 2.0, "patterns": []},
+                "M15": {"atr14": 2.5, "patterns": []},
+                "H4": {"atr14": 5.0, "patterns": []},
             },
         }
 
@@ -34,10 +36,15 @@ def market_data():
     h1 = [candle(100 + i, 105 + i, 95 + i, 102 + i, i)
           for i in range(20)]
     return {
+        "M1": {"candles": m5},
         "M5": {"candles": m5},
         "M15": {"candles": m5},
+        "M30": {"candles": h1},
         "H1": {"candles": h1},
         "H4": {"candles": h1},
+        "D1": {"candles": h1},
+        "W1": {"candles": h1},
+        "MN1": {"candles": h1},
     }
 
 
